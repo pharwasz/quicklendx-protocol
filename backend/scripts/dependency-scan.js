@@ -15,12 +15,25 @@ function main() {
   const threshold = normalizeThreshold(process.argv[3] || process.env.AUDIT_SEVERITY || "high");
   const absolutePath = path.resolve(process.cwd(), reportPath);
 
-  if (!fs.existsSync(absolutePath)) {
-    console.error(`Security gate failed: audit report not found at ${absolutePath}`);
+  // If the report is missing, attempt a couple of sensible fallbacks that
+  // account for different working-directory usages in CI (root vs backend/).
+  const candidatePaths = [absolutePath,
+    path.resolve(process.cwd(), reportPath),
+    path.resolve(process.cwd(), "..", reportPath),
+    path.resolve(process.cwd(), "backend", reportPath),
+  ];
+
+  const foundPath = candidatePaths.find((p) => fs.existsSync(p));
+  if (!foundPath) {
+    console.error(
+      `Security gate failed: audit report not found. Searched paths: ${candidatePaths.join(", ")}`
+    );
     process.exit(1);
   }
 
-  const reportText = fs.readFileSync(absolutePath, "utf8");
+  const reportFilePath = foundPath;
+
+  const reportText = fs.readFileSync(reportFilePath, "utf8");
   const vulnerabilities = parseAuditReport(reportText);
 
   console.log(`Dependency audit summary: ${buildSummary(vulnerabilities)}`);
